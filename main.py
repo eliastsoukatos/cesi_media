@@ -3,6 +3,7 @@ import tempfile
 from pathlib import Path
 from dotenv import load_dotenv
 import openai
+from openai import OpenAI
 import sounddevice as sd
 import soundfile as sf
 import numpy as np
@@ -14,12 +15,8 @@ import base64
 # Cargar variables de entorno
 load_dotenv()
 
-# Configurar la clave API de OpenAI
-openai.api_key = os.getenv("OPENAI_API_KEY")
-
-# Carpeta de salida
-OUTPUT_FOLDER = "Comunicados"  # Puedes cambiar el nombre de la carpeta aquí
-os.makedirs(OUTPUT_FOLDER, exist_ok=True)
+# Configurar el cliente de OpenAI
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 def record_audio():
     print("Presiona Enter para comenzar a grabar...")
@@ -27,7 +24,7 @@ def record_audio():
     print("Grabando... Presiona Enter para detener.")
     
     fs = 44100  # Frecuencia de muestreo
-    duration = 600  # Duración máxima en segundos (10 minutos)
+    duration = 60  # Duración máxima en segundos
     
     recording = sd.rec(int(duration * fs), samplerate=fs, channels=1)
     input()
@@ -37,23 +34,23 @@ def record_audio():
 
 def transcribe_audio(file_path):
     with open(file_path, "rb") as audio_file:
-        transcription = openai.Audio.transcribe(
+        transcription = client.audio.transcriptions.create(
             model="whisper-1", 
             file=audio_file
         )
-    return transcription["text"]
+    return transcription.text
 
 def generate_press_release(transcription):
-    response = openai.ChatCompletion.create(
+    response = client.chat.completions.create(
         model="gpt-4",
         messages=[
             {"role": "system", "content": """Eres un periodista experto en escribir comunicados de prensa. 
             Escribe un comunicado de prensa en formato Markdown basado en la información proporcionada. 
             Usa la siguiente estructura:
              
-            Escribe el comunicado de prensa primero en español y luego en inglés.
+            Escribe el comunicado de prensa primero en español y luego en ingles.
              
-            Palabras clave (así es como se escriben estas palabras, en la transcripción están mal): Erick Rozo, Veneyorker, Fundavenyc
+            Palabras clave (Asi es como se escriben estas palabras, en la transcripcion esta mal): Erick Rozo, Veneyorker, Fundavenyc
 
             # COMUNICADO DE PRENSA
             ## PARA PUBLICACIÓN INMEDIATA
@@ -94,8 +91,8 @@ def save_as_pdf(content, filename):
         <body>
             <div class="logo">
                 <img src="data:image/jpeg;base64,{logo_base64}" alt="Logo">
-                </div>
-                {html_content}
+            </div>
+            {html_content}
         </body>
     </html>
     """
@@ -134,31 +131,28 @@ def main():
     print("Bienvenido al Generador de Comunicados de Prensa con IA")
     
     # Opción para grabar audio o subir archivo
-    print("Selecciona una opción:")
-    print("1. Grabar audio")
-    print("2. Usar un archivo de audio existente")
-    choice = input("Ingresa 1 o 2 y presiona Enter: ")
+    choice = input("¿Deseas grabar audio (1) o subir un archivo de audio (2)? ")
     
     if choice == "1":
-        print("Preparando para grabar audio...")
+        print("Grabando audio...")
         audio, fs = record_audio()
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_audio:
             sf.write(temp_audio.name, audio, fs)
             audio_file_path = temp_audio.name
     elif choice == "2":
-        audio_file_path = input("Ingresa la ruta completa del archivo de audio (por ejemplo, /Users/tu_usuario/archivo.wav): ")
+        audio_file_path = input("Ingresa la ruta del archivo de audio: ")
     else:
         print("Opción no válida. Saliendo...")
         return
     
-    print("Transcribiendo audio... Esto puede tomar unos minutos.")
+    print("Transcribiendo audio...")
     transcription = transcribe_audio(audio_file_path)
     
-    print("Generando comunicado de prensa... Esto puede tomar unos minutos.")
+    print("Generando comunicado de prensa...")
     press_release = generate_press_release(transcription)
     
-    output_filename = "comunicado_de_prensa"
-    output_path = os.path.join(OUTPUT_FOLDER, f"{output_filename}.pdf")
+    output_filename = input("Ingresa el nombre para el archivo PDF de salida (sin extensión): ")
+    output_path = f"{output_filename}.pdf"
     
     print(f"Guardando comunicado de prensa en {output_path}...")
     save_as_pdf(press_release, output_path)
